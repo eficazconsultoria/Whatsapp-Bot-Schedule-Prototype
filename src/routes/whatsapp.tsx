@@ -338,61 +338,111 @@ function formatText(s: string) {
 }
 
 function DatePicker({ onPick, disabled }: { onPick: (iso: string) => void; disabled: boolean }) {
-  const [cursor, setCursor] = useState(() => new Date());
-  const month = cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  const year = cursor.getFullYear();
-  const m = cursor.getMonth();
-  const daysInMonth = new Date(year, m + 1, 0).getDate();
-  const startWeekday = new Date(year, m, 1).getDay();
+  const [customMode, setCustomMode] = useState(false);
+  const [customValue, setCustomValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const cells: (number | null)[] = [
-    ...Array(startWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
+  // Próximos 10 dias disponíveis (excluindo domingos)
+  const days: { iso: string; weekday: string; dayNum: number; monthShort: string }[] = [];
+  let offset = 0;
+  while (days.length < 10 && offset < 30) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + offset);
+    if (d.getDay() !== 0) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      days.push({
+        iso,
+        weekday: d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""),
+        dayNum: d.getDate(),
+        monthShort: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
+      });
+    }
+    offset++;
+  }
+
+  function submitCustom() {
+    setError(null);
+    // Aceita dd/mm/aaaa ou dd/mm
+    const match = customValue.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    if (!match) {
+      setError("Formato: dd/mm/aaaa");
+      return;
+    }
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    let year = match[3] ? parseInt(match[3], 10) : today.getFullYear();
+    if (year < 100) year += 2000;
+    const d = new Date(year, month - 1, day);
+    if (
+      d.getFullYear() !== year ||
+      d.getMonth() !== month - 1 ||
+      d.getDate() !== day ||
+      d < today
+    ) {
+      setError("Data inválida ou no passado");
+      return;
+    }
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    onPick(iso);
+  }
 
   return (
-    <div className="mt-2 bg-white rounded-md border border-border p-2 w-[260px]">
-      <div className="flex items-center justify-between mb-2">
-        <button onClick={() => setCursor(new Date(year, m - 1, 1))} className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted">
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <span className="text-xs font-semibold capitalize">{month}</span>
-        <button onClick={() => setCursor(new Date(year, m + 1, 1))} className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted">
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="grid grid-cols-7 text-[10px] text-muted-foreground mb-1">
-        {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
-          <div key={i} className="text-center">{d}</div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {cells.map((day, i) => {
-          if (!day) return <div key={i} />;
-          const date = new Date(year, m, day);
-          const past = date < today;
-          const isSunday = date.getDay() === 0;
-          const dis = disabled || past || isSunday;
-          return (
+    <div className="mt-2 w-[260px] space-y-1.5">
+      {!customMode && (
+        <>
+          {days.map((d) => (
             <button
-              key={i}
-              disabled={dis}
-              onClick={() => {
-                const iso = `${year}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                onPick(iso);
-              }}
-              className={cn(
-                "h-7 text-xs rounded",
-                dis ? "text-muted-foreground/40" : "hover:bg-[var(--whatsapp-green)] hover:text-white text-foreground",
-              )}
+              key={d.iso}
+              disabled={disabled}
+              onClick={() => onPick(d.iso)}
+              className="w-full text-left text-xs bg-white border border-border rounded-md px-3 py-2 hover:bg-[var(--whatsapp-green)] hover:text-white hover:border-[var(--whatsapp-green)] transition-colors disabled:opacity-50 capitalize"
             >
-              {day}
+              {d.weekday}, {d.dayNum} de {d.monthShort}
             </button>
-          );
-        })}
-      </div>
+          ))}
+          <button
+            disabled={disabled}
+            onClick={() => setCustomMode(true)}
+            className="w-full text-xs bg-white border border-dashed border-[var(--whatsapp-green)] text-[var(--whatsapp-green)] rounded-md px-3 py-2 hover:bg-[var(--whatsapp-green)] hover:text-white transition-colors disabled:opacity-50"
+          >
+            📆 Outra data…
+          </button>
+        </>
+      )}
+
+      {customMode && (
+        <div className="bg-white border border-border rounded-md p-2 space-y-2">
+          <label className="text-[11px] text-muted-foreground">Digite a data desejada</label>
+          <input
+            autoFocus
+            disabled={disabled}
+            value={customValue}
+            onChange={(e) => setCustomValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submitCustom()}
+            placeholder="dd/mm/aaaa"
+            className="w-full text-xs border border-border rounded px-2 py-1.5 outline-none focus:border-[var(--whatsapp-green)]"
+          />
+          {error && <div className="text-[10px] text-destructive">{error}</div>}
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => { setCustomMode(false); setError(null); setCustomValue(""); }}
+              className="flex-1 text-xs py-1.5 rounded border border-border hover:bg-muted"
+            >
+              Voltar
+            </button>
+            <button
+              onClick={submitCustom}
+              disabled={disabled}
+              className="flex-1 text-xs py-1.5 rounded bg-[var(--whatsapp-green)] text-white hover:opacity-90"
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
