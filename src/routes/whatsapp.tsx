@@ -336,6 +336,8 @@ function WhatsAppSim() {
               setPickedDate(null);
               setPickedTime(null);
               setRequestId(null);
+              setAwaitingCustomDate(false);
+              setInputValue("");
               setTimeout(() => runStep("welcome"), 200);
             }}
             className="w-full h-9 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
