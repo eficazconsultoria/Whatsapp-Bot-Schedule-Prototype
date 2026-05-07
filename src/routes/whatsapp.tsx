@@ -173,9 +173,54 @@ function WhatsAppSim() {
   }
 
   function handleDatePick(dateIso: string) {
+    if (dateIso === "__custom__") {
+      userSay("Selecionar outra data");
+      setAwaitingCustomDate(true);
+      setTimeout(() => {
+        botSay([
+          { text: "Sem problema! Por favor, *digite a data desejada* no formato dd/mm/aaaa (ex: 15/06/2026)." },
+        ]);
+      }, 400);
+      return;
+    }
     setPickedDate(dateIso);
+    setAwaitingCustomDate(false);
     userSay(`📅 ${formatDateLong(dateIso)}`);
     setTimeout(() => runStep("schedule_pick_time"), 400);
+  }
+
+  function handleSendInput() {
+    const value = inputValue.trim();
+    if (!value || !awaitingCustomDate) return;
+    const match = value.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!match) {
+      userSay(value);
+      setInputValue("");
+      setTimeout(() => botSay([{ text: "Hmm, não consegui entender. 🤔 Tente o formato *dd/mm/aaaa* (ex: 15/06/2026)." }]), 400);
+      return;
+    }
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    let year = match[3] ? parseInt(match[3], 10) : today.getFullYear();
+    if (year < 100) year += 2000;
+    const d = new Date(year, month - 1, day);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day || d < today) {
+      userSay(value);
+      setInputValue("");
+      setTimeout(() => botSay([{ text: "Essa data é inválida ou está no passado. Tente novamente. 📅" }]), 400);
+      return;
+    }
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    userSay(value);
+    setInputValue("");
+    setAwaitingCustomDate(false);
+    setPickedDate(iso);
+    setTimeout(() => {
+      botSay([{ text: `Perfeito! Anotei *${formatDateLong(iso)}*.` }]);
+      setTimeout(() => runStep("schedule_pick_time"), 800);
+    }, 400);
   }
 
   function handleTimePick(time: string) {
