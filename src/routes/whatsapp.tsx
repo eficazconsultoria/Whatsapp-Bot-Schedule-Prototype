@@ -279,12 +279,34 @@ function WhatsAppSim() {
             <div className="bg-[var(--whatsapp-bg)] p-2 flex items-center gap-2">
               <div className="flex-1 bg-white rounded-full flex items-center px-3 py-2 gap-2 shadow-sm">
                 <Smile className="h-5 w-5 text-muted-foreground" />
-                <input disabled placeholder="Use os botões acima…" className="flex-1 text-sm bg-transparent outline-none" />
+                <input
+                  disabled={!awaitingCustomDate}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSendInput();
+                    }
+                  }}
+                  placeholder={awaitingCustomDate ? "Digite a data (dd/mm/aaaa)…" : "Use os botões acima…"}
+                  className="flex-1 text-sm bg-transparent outline-none disabled:cursor-not-allowed"
+                />
                 <Paperclip className="h-5 w-5 text-muted-foreground" />
               </div>
-              <button className="h-11 w-11 rounded-full bg-[var(--whatsapp-green)] text-white flex items-center justify-center">
-                <Mic className="h-5 w-5" />
-              </button>
+              {awaitingCustomDate && inputValue.trim() ? (
+                <button
+                  onClick={handleSendInput}
+                  className="h-11 w-11 rounded-full bg-[var(--whatsapp-green)] text-white flex items-center justify-center"
+                  aria-label="Enviar"
+                >
+                  <Send className="h-5 w-5" />
+                </button>
+              ) : (
+                <button className="h-11 w-11 rounded-full bg-[var(--whatsapp-green)] text-white flex items-center justify-center">
+                  <Mic className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
