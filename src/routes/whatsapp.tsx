@@ -53,6 +53,8 @@ function WhatsAppSim() {
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const [pickedTime, setPickedTime] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [awaitingCustomDate, setAwaitingCustomDate] = useState(false);
+  const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -171,9 +173,54 @@ function WhatsAppSim() {
   }
 
   function handleDatePick(dateIso: string) {
+    if (dateIso === "__custom__") {
+      userSay("Selecionar outra data");
+      setAwaitingCustomDate(true);
+      setTimeout(() => {
+        botSay([
+          { text: "Sem problema! Por favor, *digite a data desejada* no formato dd/mm/aaaa (ex: 15/06/2026)." },
+        ]);
+      }, 400);
+      return;
+    }
     setPickedDate(dateIso);
+    setAwaitingCustomDate(false);
     userSay(`📅 ${formatDateLong(dateIso)}`);
     setTimeout(() => runStep("schedule_pick_time"), 400);
+  }
+
+  function handleSendInput() {
+    const value = inputValue.trim();
+    if (!value || !awaitingCustomDate) return;
+    const match = value.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!match) {
+      userSay(value);
+      setInputValue("");
+      setTimeout(() => botSay([{ text: "Hmm, não consegui entender. 🤔 Tente o formato *dd/mm/aaaa* (ex: 15/06/2026)." }]), 400);
+      return;
+    }
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    let year = match[3] ? parseInt(match[3], 10) : today.getFullYear();
+    if (year < 100) year += 2000;
+    const d = new Date(year, month - 1, day);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day || d < today) {
+      userSay(value);
+      setInputValue("");
+      setTimeout(() => botSay([{ text: "Essa data é inválida ou está no passado. Tente novamente. 📅" }]), 400);
+      return;
+    }
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    userSay(value);
+    setInputValue("");
+    setAwaitingCustomDate(false);
+    setPickedDate(iso);
+    setTimeout(() => {
+      botSay([{ text: `Perfeito! Anotei *${formatDateLong(iso)}*.` }]);
+      setTimeout(() => runStep("schedule_pick_time"), 800);
+    }, 400);
   }
 
   function handleTimePick(time: string) {
@@ -232,12 +279,34 @@ function WhatsAppSim() {
             <div className="bg-[var(--whatsapp-bg)] p-2 flex items-center gap-2">
               <div className="flex-1 bg-white rounded-full flex items-center px-3 py-2 gap-2 shadow-sm">
                 <Smile className="h-5 w-5 text-muted-foreground" />
-                <input disabled placeholder="Use os botões acima…" className="flex-1 text-sm bg-transparent outline-none" />
+                <input
+                  disabled={!awaitingCustomDate}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSendInput();
+                    }
+                  }}
+                  placeholder={awaitingCustomDate ? "Digite a data (dd/mm/aaaa)…" : "Use os botões acima…"}
+                  className="flex-1 text-sm bg-transparent outline-none disabled:cursor-not-allowed"
+                />
                 <Paperclip className="h-5 w-5 text-muted-foreground" />
               </div>
-              <button className="h-11 w-11 rounded-full bg-[var(--whatsapp-green)] text-white flex items-center justify-center">
-                <Mic className="h-5 w-5" />
-              </button>
+              {awaitingCustomDate && inputValue.trim() ? (
+                <button
+                  onClick={handleSendInput}
+                  className="h-11 w-11 rounded-full bg-[var(--whatsapp-green)] text-white flex items-center justify-center"
+                  aria-label="Enviar"
+                >
+                  <Send className="h-5 w-5" />
+                </button>
+              ) : (
+                <button className="h-11 w-11 rounded-full bg-[var(--whatsapp-green)] text-white flex items-center justify-center">
+                  <Mic className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -267,6 +336,8 @@ function WhatsAppSim() {
               setPickedDate(null);
               setPickedTime(null);
               setRequestId(null);
+              setAwaitingCustomDate(false);
+              setInputValue("");
               setTimeout(() => runStep("welcome"), 200);
             }}
             className="w-full h-9 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
@@ -338,14 +409,9 @@ function formatText(s: string) {
 }
 
 function DatePicker({ onPick, disabled }: { onPick: (iso: string) => void; disabled: boolean }) {
-  const [customMode, setCustomMode] = useState(false);
-  const [customValue, setCustomValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Próximos 10 dias disponíveis (excluindo domingos)
   const days: { iso: string; weekday: string; dayNum: number; monthShort: string }[] = [];
   let offset = 0;
   while (days.length < 10 && offset < 30) {
@@ -363,86 +429,25 @@ function DatePicker({ onPick, disabled }: { onPick: (iso: string) => void; disab
     offset++;
   }
 
-  function submitCustom() {
-    setError(null);
-    // Aceita dd/mm/aaaa ou dd/mm
-    const match = customValue.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
-    if (!match) {
-      setError("Formato: dd/mm/aaaa");
-      return;
-    }
-    const day = parseInt(match[1], 10);
-    const month = parseInt(match[2], 10);
-    let year = match[3] ? parseInt(match[3], 10) : today.getFullYear();
-    if (year < 100) year += 2000;
-    const d = new Date(year, month - 1, day);
-    if (
-      d.getFullYear() !== year ||
-      d.getMonth() !== month - 1 ||
-      d.getDate() !== day ||
-      d < today
-    ) {
-      setError("Data inválida ou no passado");
-      return;
-    }
-    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    onPick(iso);
-  }
-
   return (
     <div className="mt-2 w-[260px] space-y-1.5">
-      {!customMode && (
-        <>
-          {days.map((d) => (
-            <button
-              key={d.iso}
-              disabled={disabled}
-              onClick={() => onPick(d.iso)}
-              className="w-full text-left text-xs bg-white border border-border rounded-md px-3 py-2 hover:bg-[var(--whatsapp-green)] hover:text-white hover:border-[var(--whatsapp-green)] transition-colors disabled:opacity-50 capitalize"
-            >
-              {d.weekday}, {d.dayNum} de {d.monthShort}
-            </button>
-          ))}
-          <button
-            disabled={disabled}
-            onClick={() => setCustomMode(true)}
-            className="w-full text-xs bg-white border border-dashed border-[var(--whatsapp-green)] text-[var(--whatsapp-green)] rounded-md px-3 py-2 hover:bg-[var(--whatsapp-green)] hover:text-white transition-colors disabled:opacity-50"
-          >
-            📆 Outra data…
-          </button>
-        </>
-      )}
-
-      {customMode && (
-        <div className="bg-white border border-border rounded-md p-2 space-y-2">
-          <label className="text-[11px] text-muted-foreground">Digite a data desejada</label>
-          <input
-            autoFocus
-            disabled={disabled}
-            value={customValue}
-            onChange={(e) => setCustomValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submitCustom()}
-            placeholder="dd/mm/aaaa"
-            className="w-full text-xs border border-border rounded px-2 py-1.5 outline-none focus:border-[var(--whatsapp-green)]"
-          />
-          {error && <div className="text-[10px] text-destructive">{error}</div>}
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => { setCustomMode(false); setError(null); setCustomValue(""); }}
-              className="flex-1 text-xs py-1.5 rounded border border-border hover:bg-muted"
-            >
-              Voltar
-            </button>
-            <button
-              onClick={submitCustom}
-              disabled={disabled}
-              className="flex-1 text-xs py-1.5 rounded bg-[var(--whatsapp-green)] text-white hover:opacity-90"
-            >
-              Confirmar
-            </button>
-          </div>
-        </div>
-      )}
+      {days.map((d) => (
+        <button
+          key={d.iso}
+          disabled={disabled}
+          onClick={() => onPick(d.iso)}
+          className="w-full text-left text-xs bg-white border border-border rounded-md px-3 py-2 hover:bg-[var(--whatsapp-green)] hover:text-white hover:border-[var(--whatsapp-green)] transition-colors disabled:opacity-50 capitalize"
+        >
+          {d.weekday}, {d.dayNum} de {d.monthShort}
+        </button>
+      ))}
+      <button
+        disabled={disabled}
+        onClick={() => onPick("__custom__")}
+        className="w-full text-xs bg-white border border-dashed border-[var(--whatsapp-green)] text-[var(--whatsapp-green)] rounded-md px-3 py-2 hover:bg-[var(--whatsapp-green)] hover:text-white transition-colors disabled:opacity-50"
+      >
+        📆 Outra data…
+      </button>
     </div>
   );
 }
