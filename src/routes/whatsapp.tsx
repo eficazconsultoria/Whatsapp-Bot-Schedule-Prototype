@@ -53,6 +53,8 @@ function WhatsAppSim() {
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const [pickedTime, setPickedTime] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [awaitingCustomDate, setAwaitingCustomDate] = useState(false);
+  const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
